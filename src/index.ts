@@ -15,10 +15,14 @@
  */
 
 // Versioning / errors / wire model
-export { PROTOCOL_NAME, PROTOCOL_VERSION, CONNECT_URI_SCHEME, SDK_VERSION } from "./version.js";
+export { PROTOCOL_NAME, PROTOCOL_VERSION, CONNECT_URI_SCHEME, SDK_VERSION, DEFAULT_BRIDGE_URL } from "./version.js";
 export { AetraConnectError, userRejected } from "./errors.js";
 export type { AetraConnectErrorCode } from "./errors.js";
 export type * from "./types.js";
+
+// App manifest (TON-Connect style identity)
+export { loadManifest, validateManifest, manifestToApp, normaliseOrigin } from "./manifest.js";
+export type { AetraConnectManifest } from "./manifest.js";
 
 // dApp + wallet connectors
 export { AetraConnect } from "./dapp/index.js";

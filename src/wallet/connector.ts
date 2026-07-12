@@ -2,13 +2,15 @@ import { Address } from "@aetra/sdk/address";
 import { Bytes } from "@aetra/sdk/bytes";
 import { Emitter } from "../emitter.js";
 import { AetraConnectError, userRejected } from "../errors.js";
-import { PROTOCOL_VERSION } from "../version.js";
+import { PROTOCOL_VERSION, DEFAULT_BRIDGE_URL } from "../version.js";
 import { SessionKeyPair, SessionCipher } from "../crypto/index.js";
 import { AetraProof, signMessage as builtinSignMessage, type ProofSigner } from "../proof/index.js";
 import { ConnectUri } from "../uri/index.js";
+import { loadManifest, manifestToApp } from "../manifest.js";
 import { Session, MemorySessionStore, type SessionStore } from "../session/index.js";
 import { HttpBridge, type Bridge } from "../bridge/index.js";
 import type {
+  AppMetadata,
   BridgeEnvelope,
   ConnectRequest,
   ConnectedAccount,
@@ -43,10 +45,12 @@ export interface TransactionContext {
 }
 
 export interface AetraWalletConnectOptions {
-  /** A relay base URL or a `Bridge` instance (must be reachable from where the URI's `bridge` points). */
-  bridge: Bridge | string;
+  /** A relay base URL or a `Bridge` instance. Defaults to the network bridge (`DEFAULT_BRIDGE_URL`). */
+  bridge?: Bridge | string;
   /** The unlocked account signer. */
   signer: WalletSigner;
+  /** `fetch` implementation used to load a dApp's manifest (defaults to the global). */
+  fetch?: typeof fetch;
   /** How the wallet presents itself back to the dApp. */
   wallet?: WalletMetadata;
   /** Network id reported to the dApp in the connected account. */
@@ -83,6 +87,7 @@ type WalletEventMap = {
 export class AetraWalletConnect {
   private readonly bridge: Bridge;
   private readonly signer: WalletSigner;
+  private readonly fetchImpl?: typeof fetch;
   private readonly walletMeta?: WalletMetadata;
   private readonly chainId?: string;
   private readonly storage: SessionStore;
@@ -98,8 +103,10 @@ export class AetraWalletConnect {
   private lifetimeTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: AetraWalletConnectOptions) {
-    this.bridge = typeof options.bridge === "string" ? new HttpBridge({ baseUrl: options.bridge }) : options.bridge;
+    const bridge = options.bridge ?? DEFAULT_BRIDGE_URL;
+    this.bridge = typeof bridge === "string" ? new HttpBridge({ baseUrl: bridge }) : bridge;
     this.signer = options.signer;
+    this.fetchImpl = options.fetch;
     this.walletMeta = options.wallet;
     this.chainId = options.chainId;
     this.storage = options.storage ?? new MemorySessionStore();
@@ -155,11 +162,26 @@ export class AetraWalletConnect {
   }
 
   /**
-   * Approves a pairing: mints a session key, signs an Aetra Proof if requested,
-   * sends the connect event to the dApp, and starts serving requests. Returns
-   * the live `Session`.
+   * Resolves the dApp's display metadata for the approval screen. When the
+   * request carries a `manifestUrl`, this fetches and validates the hosted
+   * manifest (the trustworthy source of the app's name/url/icon); otherwise it
+   * returns the inline `app`. Call it before showing the approval UI so the
+   * wallet displays verified, not self-asserted, identity.
+   */
+  async resolveApp(request: ConnectRequest): Promise<AppMetadata> {
+    if (request.manifestUrl) {
+      return manifestToApp(await loadManifest(request.manifestUrl, this.fetchImpl));
+    }
+    return request.app;
+  }
+
+  /**
+   * Approves a pairing: resolves the app manifest, mints a session key, signs an
+   * Aetra Proof (bound to the manifest's origin) if requested, sends the connect
+   * event to the dApp, and starts serving requests. Returns the live `Session`.
    */
   async approve(request: ConnectRequest): Promise<Session> {
+    const app = await this.resolveApp(request);
     const keypair = SessionKeyPair.generate();
 
     const proofItem = request.items.find((i) => i.name === "aetra_proof");
@@ -167,7 +189,7 @@ export class AetraWalletConnect {
     if (proofItem && proofItem.name === "aetra_proof") {
       proof = AetraProof.create({
         signer: this.signer,
-        domain: request.app.url,
+        domain: app.url,
         payload: proofItem.payload,
         dappClientId: request.clientId,
         walletClientId: keypair.clientId,
@@ -183,7 +205,7 @@ export class AetraWalletConnect {
       self: keypair,
       peerClientId: request.clientId,
       account,
-      app: request.app,
+      app,
       bridge: request.bridge,
       createdAt: now,
       expiresAt,

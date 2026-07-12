@@ -24,7 +24,7 @@ export interface HttpBridgeOptions {
 export class HttpBridge implements Bridge {
   readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
-  private readonly EventSourceImpl: typeof EventSource;
+  private readonly eventSourceOption?: typeof EventSource;
 
   constructor(options: HttpBridgeOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -33,12 +33,9 @@ export class HttpBridge implements Bridge {
       throw new AetraConnectError("BRIDGE_ERROR", "HttpBridge: no global fetch; pass options.fetch");
     }
     this.fetchImpl = f.bind(globalThis);
-
-    const es = options.eventSource ?? (globalThis as { EventSource?: typeof EventSource }).EventSource;
-    if (typeof es !== "function") {
-      throw new AetraConnectError("BRIDGE_ERROR", "HttpBridge: no global EventSource; pass options.eventSource");
-    }
-    this.EventSourceImpl = es;
+    // `EventSource` is only needed at subscribe() time (client-side). Resolving
+    // it lazily keeps constructing an HttpBridge safe under SSR / in Node.
+    this.eventSourceOption = options.eventSource;
   }
 
   async send(envelope: BridgeEnvelope): Promise<void> {
@@ -59,8 +56,12 @@ export class HttpBridge implements Bridge {
   }
 
   subscribe(clientId: string, handlers: BridgeHandlers): BridgeSubscription {
+    const EventSourceImpl = this.eventSourceOption ?? (globalThis as { EventSource?: typeof EventSource }).EventSource;
+    if (typeof EventSourceImpl !== "function") {
+      throw new AetraConnectError("BRIDGE_ERROR", "HttpBridge: no global EventSource; pass options.eventSource");
+    }
     const url = `${this.baseUrl}/events?client=${encodeURIComponent(clientId)}`;
-    const source = new this.EventSourceImpl(url);
+    const source = new EventSourceImpl(url);
 
     source.onopen = () => handlers.onOpen?.();
     source.onmessage = (event: MessageEvent) => {

@@ -9,9 +9,11 @@ Object-oriented, dependency-light TypeScript. Runs unchanged in the browser and
 in Node (>=18). Built on [`@aetra/sdk`](../sdk) — the same address codec and
 signer that the chain, the Dalen wallet, and the Tarsen framework already share.
 
-> Status: **0.1.0 — foundation.** Full pairing → proof → transaction →
-> disconnect flow, session persistence, idle auto-disconnect, and a reference
-> relay. 34 tests, including an end-to-end handshake over the in-memory bridge.
+> Status: **0.1.0 — foundation.** Manifest-based app identity (TON-Connect
+> style), full pairing → proof → transaction → disconnect flow, session
+> persistence, idle auto-disconnect, a reference relay, and React bindings
+> ([`@aetra/connect-react`](../aetra-connect-react)). 50 tests, including an
+> end-to-end handshake over the in-memory bridge.
 
 ## Why
 
@@ -37,17 +39,43 @@ Narrow primitives are exported on their own subpaths too: `@aetra/connect/proof`
 (Aetra Proof), `@aetra/connect/crypto` (session keys + cipher),
 `@aetra/connect/session` (state + storage), `@aetra/connect/bridge` (transports).
 
+## Using React / Next.js?
+
+Reach for **[`@aetra/connect-react`](../aetra-connect-react)** — a
+manifest-configured `<AetraConnectProvider>`, a drop-in `<AetraConnectButton>`, a
+QR pairing modal, and hooks (`useAetraWallet`, `useAetraAddress`,
+`useAetraConnect`). It's the `@tonconnect/ui-react` analogue and wraps this core.
+The rest of this README is the framework-agnostic core.
+
+## App identity: the manifest
+
+Like TON Connect, a dApp declares itself with a small hosted JSON file (e.g.
+`https://myapp.com/aetra-connect-manifest.json`). The wallet fetches it to show
+who's connecting, and its `url` is the origin the Aetra Proof binds to.
+
+```json
+{
+  "url": "https://myapp.com",
+  "name": "My Aetra dApp",
+  "iconUrl": "https://myapp.com/icon.png"
+}
+```
+
+`url` and `iconUrl` must be publicly reachable with open CORS; the icon should be
+PNG/ICO (not SVG). See [`examples/aetra-connect-manifest.json`](examples/aetra-connect-manifest.json).
+
 ## dApp quick start
 
 ```ts
 import { AetraConnect, BrowserSessionStore } from "@aetra/connect/dapp";
 
 const connect = new AetraConnect({
-  app: { name: "Aetra Swap", url: location.origin, icon: `${location.origin}/icon.png` },
-  bridge: "https://bridge.aetra.network",
+  // Manifest-first (recommended). The bridge defaults to the network relay.
+  manifestUrl: "https://myapp.com/aetra-connect-manifest.json",
   storage: new BrowserSessionStore("aetra-connect:swap"),
 });
 
+await connect.ready();                        // load the manifest
 await connect.restore();                      // resume a prior session, if any
 
 // On "Connect wallet":
@@ -92,7 +120,8 @@ await wc.resume();                          // reattach sessions after unlock
 
 // When the wallet scans a QR / opens a deep link:
 const request = wc.readRequest(uri);        // throws MALFORMED / UNSUPPORTED_VERSION / EXPIRED
-// show request.app in the approval screen, then:
+const app = await wc.resolveApp(request);   // fetches + validates the dApp's manifest
+// show `app` (verified name/url/icon) in the approval screen, then:
 await wc.approve(request);                   // or: await wc.reject(request, "not now")
 ```
 

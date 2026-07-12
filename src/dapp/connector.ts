@@ -1,12 +1,13 @@
 import { Bytes } from "@aetra/sdk/bytes";
 import { Emitter } from "../emitter.js";
 import { AetraConnectError } from "../errors.js";
-import { PROTOCOL_VERSION } from "../version.js";
+import { PROTOCOL_VERSION, DEFAULT_BRIDGE_URL } from "../version.js";
 import { SessionKeyPair, SessionCipher, randomId, randomChallenge } from "../crypto/index.js";
 import { AetraProof, verifySignedMessage } from "../proof/index.js";
 import { ConnectUri, type ConnectUriForms } from "../uri/index.js";
 import { Session, MemorySessionStore, type SessionStore } from "../session/index.js";
 import { HttpBridge, type Bridge, type BridgeSubscription } from "../bridge/index.js";
+import { loadManifest, manifestToApp, type AetraConnectManifest } from "../manifest.js";
 import type {
   AppMetadata,
   BridgeEnvelope,
@@ -30,12 +31,21 @@ const DEFAULT_PROOF_MAX_AGE_SECONDS = 300;
 const LIFETIME_CHECK_INTERVAL_MS = 15_000;
 
 export interface AetraConnectOptions {
-  /** How this dApp presents itself; `app.url` is the origin the Aetra Proof binds to. */
-  app: AppMetadata;
-  /** A relay base URL (wrapped in an `HttpBridge`) or a `Bridge` instance. */
-  bridge: Bridge | string;
+  /**
+   * URL of the dApp's hosted manifest (TON-Connect style) — the recommended way
+   * to declare identity. Provide this OR `app`. The manifest's `url` is the
+   * origin the Aetra Proof binds to. `await connect.ready()` (or the React
+   * provider) resolves it before the first `connect()`.
+   */
+  manifestUrl?: string;
+  /** Inline dApp metadata, as an alternative to `manifestUrl`. Provide this OR `manifestUrl`. */
+  app?: AppMetadata;
+  /** A relay base URL or a `Bridge` instance. Defaults to the network bridge (`DEFAULT_BRIDGE_URL`). */
+  bridge?: Bridge | string;
   /** Explicit bridge URL to advertise in the pairing request (defaults to the HttpBridge base). */
   bridgeUrl?: string;
+  /** `fetch` implementation used to load the manifest (defaults to the global). */
+  fetch?: typeof fetch;
   /** Session persistence. Defaults to in-memory (lost on reload). */
   storage?: SessionStore;
   /** Base for the universal (https) link form of the pairing URI. */
@@ -106,7 +116,11 @@ interface PendingRequest {
  * ```
  */
 export class AetraConnect {
-  private readonly app: AppMetadata;
+  private app?: AppMetadata;
+  private manifest?: AetraConnectManifest;
+  private readonly manifestUrl?: string;
+  private readonly manifestFetch?: typeof fetch;
+  private manifestReady?: Promise<void>;
   private readonly bridge: Bridge;
   private readonly bridgeUrl: string;
   private readonly storage: SessionStore;
@@ -126,8 +140,17 @@ export class AetraConnect {
   private lifetimeTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: AetraConnectOptions) {
-    this.app = options.app;
-    const resolved = resolveBridge(options.bridge, options.bridgeUrl);
+    this.manifestUrl = options.manifestUrl;
+    this.manifestFetch = options.fetch;
+    if (options.app) {
+      this.app = options.app;
+    } else if (!options.manifestUrl) {
+      throw new AetraConnectError("MALFORMED", "AetraConnect requires either `manifestUrl` or `app`");
+    }
+    // The manifest is fetched lazily by ready() — the constructor stays free of
+    // side effects, so building an instance on a server (SSR) is safe.
+
+    const resolved = resolveBridge(options.bridge ?? DEFAULT_BRIDGE_URL, options.bridgeUrl);
     this.bridge = resolved.bridge;
     this.bridgeUrl = resolved.url;
     this.storage = options.storage ?? new MemorySessionStore();
@@ -139,6 +162,35 @@ export class AetraConnect {
   }
 
   // --- Public state ----------------------------------------------------
+
+  /**
+   * Loads the manifest (once, memoised) and resolves when the app metadata is
+   * available — immediately if `app` was inline. Call before the first
+   * `connect()`; the React provider awaits it for you. Rejects with `MALFORMED`
+   * if the manifest can't be fetched or is invalid.
+   */
+  async ready(): Promise<void> {
+    if (this.app || !this.manifestUrl) return;
+    if (!this.manifestReady) {
+      this.manifestReady = loadManifest(this.manifestUrl, this.manifestFetch).then((m) => {
+        this.manifest = m;
+        this.app = manifestToApp(m);
+      });
+      // Keep the rejection observable via ready() without an unhandled-rejection warning.
+      void this.manifestReady.catch(() => {});
+    }
+    await this.manifestReady;
+  }
+
+  /** The resolved app metadata (name/url/icon), or null until `ready()`. */
+  get appMetadata(): AppMetadata | null {
+    return this.app ?? null;
+  }
+
+  /** The loaded manifest, if one was configured and has resolved. */
+  get manifestData(): AetraConnectManifest | null {
+    return this.manifest ?? null;
+  }
 
   /** The connected account, or null. */
   get account(): ConnectedAccount | null {
@@ -171,6 +223,9 @@ export class AetraConnect {
    * replaces the current session (the old one is torn down cleanly).
    */
   connect(opts: { proof?: boolean; requestValidityMs?: number } = {}): ConnectHandshake {
+    if (!this.app) {
+      throw new AetraConnectError("MALFORMED", "manifest not loaded yet — await connect.ready() before connect()");
+    }
     this.cancelHandshake();
 
     const keypair = SessionKeyPair.generate();
@@ -182,6 +237,7 @@ export class AetraConnect {
       v: PROTOCOL_VERSION,
       clientId: keypair.clientId,
       bridge: this.bridgeUrl,
+      ...(this.manifestUrl ? { manifestUrl: this.manifestUrl } : {}),
       app: this.app,
       items: wantProof ? [{ name: "aetra_address" }, { name: "aetra_proof", payload: challenge! }] : [{ name: "aetra_address" }],
       validUntil,
@@ -401,12 +457,14 @@ export class AetraConnect {
 
   private acceptConnect(pending: PendingHandshake, walletClientId: string, payload: ConnectEventPayload): void {
     const account = payload.account;
+    const app = this.app;
+    if (!app) throw new AetraConnectError("INTERNAL", "manifest not resolved");
 
     // Enforce the proof iff we asked for one.
     if (pending.challenge !== null) {
       if (!account.proof) throw new AetraConnectError("BAD_PROOF", "wallet did not return the requested proof");
       const proven = AetraProof.verify(account.proof, {
-        domain: this.app.url,
+        domain: app.url,
         payload: pending.challenge,
         dappClientId: pending.keypair.clientId,
         walletClientId,
@@ -435,7 +493,7 @@ export class AetraConnect {
       self: pending.keypair,
       peerClientId: walletClientId,
       account,
-      app: this.app,
+      app,
       bridge: this.bridgeUrl,
       createdAt: now,
       expiresAt,

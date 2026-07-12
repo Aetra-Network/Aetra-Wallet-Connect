@@ -7,6 +7,14 @@ All notable changes to `@aetra/connect` are documented here.
 Initial foundation release.
 
 ### Added
+- **App manifest** (TON-Connect style): a dApp declares itself with a hosted
+  `aetra-connect-manifest.json` and configures a `manifestUrl`; both sides fetch
+  and validate it, and the proof binds to the manifest's `url`. The bridge is now
+  optional (defaults to `DEFAULT_BRIDGE_URL`). `await connect.ready()` loads it.
+- **React bindings** in the sibling package `@aetra/connect-react` (provider,
+  button, QR modal, hooks).
+- SSR-safe construction: manifest loading is lazy and `HttpBridge` resolves
+  `EventSource` at subscribe time, so building instances on a server never throws.
 - **Pairing** over QR / deep-link URIs (`aetra://` scheme + universal https link).
 - **End-to-end-encrypted transport**: ephemeral X25519 session keys →
   HKDF-SHA256 → XChaCha20-Poly1305, over an untrusted relay bridge.

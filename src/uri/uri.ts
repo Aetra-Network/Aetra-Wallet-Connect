@@ -98,6 +98,9 @@ export function validateConnectRequest(value: unknown): ConnectRequest {
   // `bridge` may be empty for an in-process / embedded transport where both
   // sides already share the bridge; the transport layer enforces reachability.
   if (typeof r.bridge !== "string") bad("missing bridge");
+  if (r.manifestUrl !== undefined && (typeof r.manifestUrl !== "string" || r.manifestUrl.length > MAX_ENCODED_LENGTH)) {
+    bad("malformed manifestUrl");
+  }
   if (!isAppMetadata(r.app)) bad("missing or malformed app metadata");
   if (!Array.isArray(r.items) || r.items.length > MAX_ITEMS || !r.items.every(isRequestedItem)) bad("malformed items");
 
@@ -105,6 +108,7 @@ export function validateConnectRequest(value: unknown): ConnectRequest {
     v: r.v as number,
     clientId: r.clientId as string,
     bridge: r.bridge as string,
+    ...(typeof r.manifestUrl === "string" ? { manifestUrl: r.manifestUrl } : {}),
     app: r.app as AppMetadata,
     items: r.items as RequestedItem[],
     ...(typeof r.validUntil === "number" ? { validUntil: r.validUntil } : {}),

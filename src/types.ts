@@ -52,6 +52,12 @@ export interface ConnectRequest {
   clientId: string;
   /** Base URL of the relay bridge both sides talk to. */
   bridge: string;
+  /**
+   * URL of the dApp's hosted manifest (TON-Connect style). When present, the
+   * wallet fetches it to display and to derive the proof domain, rather than
+   * trusting inline metadata. `app` is still carried as a fallback/display hint.
+   */
+  manifestUrl?: string;
   app: AppMetadata;
   /** Requested return items (address, optional proof). */
   items: RequestedItem[];
