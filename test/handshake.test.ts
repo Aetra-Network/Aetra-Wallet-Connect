@@ -200,6 +200,30 @@ describe("end-to-end handshake over MemoryBridge", () => {
     expect(wc.activeSessions).toHaveLength(1);
   });
 
+  it("suspend() stops serving without ending sessions; resume() re-attaches", async () => {
+    const bridge = new MemoryBridge();
+    const walletStore = new MemorySessionStore();
+    const onTx = vi.fn(async () => ({ hash: "0xRESUMED", accepted: true }));
+    const { wc } = makeWallet(bridge, onTx, walletStore);
+    const dapp = new AetraConnect({ app: APP, bridge });
+
+    const hs = dapp.connect();
+    await wc.approve(wc.readRequest(hs.deepLink));
+    await hs.approval();
+    expect(wc.activeSessions).toHaveLength(1);
+
+    // Wallet locks: stop serving, keep the stored session; the dApp stays connected.
+    wc.suspend();
+    expect(wc.activeSessions).toHaveLength(0);
+    expect(dapp.connected).toBe(true);
+
+    // Wallet unlocks: resume and the dApp's request goes through.
+    const resumed = await wc.resume();
+    expect(resumed).toHaveLength(1);
+    const res = await dapp.sendTransaction({ messages: [{ kind: "activate" }] });
+    expect(res.hash).toBe("0xRESUMED");
+  });
+
   it("restores a persisted dApp session and keeps transacting", async () => {
     const bridge = new MemoryBridge();
     const walletStore = new MemorySessionStore();

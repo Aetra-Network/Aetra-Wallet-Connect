@@ -85,7 +85,10 @@ type WalletEventMap = {
  * ephemeral key and bridge subscription.
  */
 export class AetraWalletConnect {
-  private readonly bridge: Bridge;
+  private readonly defaultBridge: Bridge;
+  private readonly defaultBridgeUrl: string | null;
+  /** HttpBridges created for dApp-specified bridge URLs, keyed by normalised URL. */
+  private readonly bridgeCache = new Map<string, Bridge>();
   private readonly signer: WalletSigner;
   private readonly fetchImpl?: typeof fetch;
   private readonly walletMeta?: WalletMetadata;
@@ -100,11 +103,20 @@ export class AetraWalletConnect {
   private readonly emitter = new Emitter<WalletEventMap>();
   private readonly sessions = new Map<string, Session>();
   private readonly subscriptions = new Map<string, { close(): void }>();
+  /** The bridge each live session talks over (resolved from its request/record). */
+  private readonly bridges = new Map<string, Bridge>();
   private lifetimeTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: AetraWalletConnectOptions) {
     const bridge = options.bridge ?? DEFAULT_BRIDGE_URL;
-    this.bridge = typeof bridge === "string" ? new HttpBridge({ baseUrl: bridge }) : bridge;
+    if (typeof bridge === "string") {
+      this.defaultBridge = new HttpBridge({ baseUrl: bridge, ...(options.fetch ? { fetch: options.fetch } : {}) });
+      this.defaultBridgeUrl = normalizeBridgeUrl(bridge);
+    } else {
+      this.defaultBridge = bridge;
+      const baseUrl = (bridge as { baseUrl?: string }).baseUrl;
+      this.defaultBridgeUrl = typeof baseUrl === "string" ? normalizeBridgeUrl(baseUrl) : null;
+    }
     this.signer = options.signer;
     this.fetchImpl = options.fetch;
     this.walletMeta = options.wallet;
@@ -212,11 +224,11 @@ export class AetraWalletConnect {
       lastActivityAt: now,
     });
 
-    this.attach(session);
+    const bridge = this.attach(session);
     await this.storage.set(session.topic, session.toRecord());
 
     // First bridge message: the connect event the dApp is waiting for.
-    await this.bridge.send(session.seal({ type: "event", event: "connect", payload: { account, wallet: this.walletMeta, expiresAt } }));
+    await bridge.send(session.seal({ type: "event", event: "connect", payload: { account, wallet: this.walletMeta, expiresAt } }));
 
     this.startLifetimeTimer();
     this.emitter.emit("connect", session);
@@ -239,7 +251,7 @@ export class AetraWalletConnect {
       payload: cipher.sealJson({ type: "event", event: "disconnect", payload: { reason } } satisfies RpcMessage),
     };
     try {
-      await this.bridge.send(envelope);
+      await this.bridgeFor(request.bridge).send(envelope);
     } catch {
       /* best-effort */
     }
@@ -267,9 +279,10 @@ export class AetraWalletConnect {
   /** Ends one session, notifying the dApp. */
   async disconnect(topic: string, reason = "wallet disconnected"): Promise<void> {
     const session = this.sessions.get(topic);
-    if (session) {
+    const bridge = this.bridges.get(topic);
+    if (session && bridge) {
       try {
-        await this.bridge.send(session.seal({ type: "event", event: "disconnect", payload: { reason } }));
+        await bridge.send(session.seal({ type: "event", event: "disconnect", payload: { reason } }));
       } catch {
         /* best-effort */
       }
@@ -277,16 +290,53 @@ export class AetraWalletConnect {
     await this.teardown(topic, reason, /* notified */ true);
   }
 
-  private attach(session: Session): void {
+  /**
+   * Stops serving all sessions WITHOUT ending them: closes every bridge
+   * subscription and the lifetime timer, but keeps the stored records — call on
+   * wallet lock, then `resume()` after the next unlock re-attaches everything.
+   */
+  suspend(): void {
+    for (const sub of this.subscriptions.values()) sub.close();
+    this.subscriptions.clear();
+    this.sessions.clear();
+    this.bridges.clear();
+    if (this.lifetimeTimer) {
+      clearInterval(this.lifetimeTimer);
+      this.lifetimeTimer = null;
+    }
+  }
+
+  /**
+   * Resolves the bridge a session/request talks over. dApps advertise their
+   * relay in the pairing URI; the wallet honours it, creating (and caching) an
+   * `HttpBridge` per distinct URL. Non-http values (an in-page `memory:` bridge)
+   * and URLs matching the constructor bridge fall back to the constructor one.
+   */
+  private bridgeFor(url: string): Bridge {
+    const normalized = normalizeBridgeUrl(url);
+    if (!normalized || !/^https?:\/\//i.test(normalized)) return this.defaultBridge;
+    if (this.defaultBridgeUrl && normalized === this.defaultBridgeUrl) return this.defaultBridge;
+    let bridge = this.bridgeCache.get(normalized);
+    if (!bridge) {
+      bridge = new HttpBridge({ baseUrl: normalized, ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
+      this.bridgeCache.set(normalized, bridge);
+    }
+    return bridge;
+  }
+
+  private attach(session: Session): Bridge {
     // Replacing a session for the same topic (e.g. a re-approve): close the old
     // listener first so it isn't orphaned.
     this.subscriptions.get(session.topic)?.close();
+    const bridge = this.bridgeFor(session.bridge);
     this.sessions.set(session.topic, session);
-    const sub = this.bridge.subscribe(session.selfClientId, {
+    this.bridges.set(session.topic, bridge);
+    const sub = bridge.subscribe(session.selfClientId, {
       onMessage: (env) => void this.onSessionMessage(session.topic, env),
       onError: () => {},
     });
     this.subscriptions.set(session.topic, sub);
+    return bridge;
   }
 
   private async onSessionMessage(topic: string, envelope: BridgeEnvelope): Promise<void> {
@@ -316,7 +366,8 @@ export class AetraWalletConnect {
     request: Extract<RpcMessage, { type: "request" }>,
   ): Promise<void> {
     const context: TransactionContext = { session, account: session.account };
-    const respond = (response: RpcResponse) => this.bridge.send(session.seal(response)).catch(() => {});
+    const bridge = this.bridges.get(session.topic) ?? this.bridgeFor(session.bridge);
+    const respond = (response: RpcResponse) => bridge.send(session.seal(response)).catch(() => {});
 
     try {
       if (request.method === "aetra_disconnect") {
@@ -364,6 +415,7 @@ export class AetraWalletConnect {
     this.subscriptions.get(topic)?.close();
     this.subscriptions.delete(topic);
     this.sessions.delete(topic);
+    this.bridges.delete(topic);
     await Promise.resolve(this.storage.delete(topic)).catch(() => {});
     if (this.sessions.size === 0 && this.lifetimeTimer) {
       clearInterval(this.lifetimeTimer);
@@ -390,6 +442,11 @@ function assertFromMatches(from: string | undefined, account: ConnectedAccount):
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Lowercases and strips trailing slashes so bridge URLs compare stably. */
+function normalizeBridgeUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "").toLowerCase();
 }
 
 export { userRejected };
