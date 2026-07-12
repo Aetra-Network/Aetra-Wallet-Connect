@@ -28,6 +28,10 @@ export type AetraConnectErrorCode =
   | "TX_FAILED"
   /** A request asked for something the wallet doesn't implement. */
   | "UNSUPPORTED_METHOD"
+  /** The wallet's account isn't the one the request expected (session/account mismatch). */
+  | "ACCOUNT_MISMATCH"
+  /** The wallet is on a different network than the dApp requires. */
+  | "CHAIN_MISMATCH"
   /** Any other internal failure. */
   | "INTERNAL";
 
@@ -76,6 +80,8 @@ const KNOWN_CODES = new Set<AetraConnectErrorCode>([
   "DECRYPT_FAILED",
   "TX_FAILED",
   "UNSUPPORTED_METHOD",
+  "ACCOUNT_MISMATCH",
+  "CHAIN_MISMATCH",
   "INTERNAL",
 ]);
 

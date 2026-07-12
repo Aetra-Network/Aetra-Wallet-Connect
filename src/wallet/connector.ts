@@ -256,6 +256,9 @@ export class AetraWalletConnect {
   }
 
   private attach(session: Session): void {
+    // Replacing a session for the same topic (e.g. a re-approve): close the old
+    // listener first so it isn't orphaned.
+    this.subscriptions.get(session.topic)?.close();
     this.sessions.set(session.topic, session);
     const sub = this.bridge.subscribe(session.selfClientId, {
       onMessage: (env) => void this.onSessionMessage(session.topic, env),
@@ -301,6 +304,7 @@ export class AetraWalletConnect {
 
       if (request.method === "aetra_sendTransaction") {
         assertNotExpired(request.params.validUntil);
+        assertFromMatches(request.params.from, session.account);
         const result = await this.onTransaction(request.params, context);
         await respond({ type: "response", id: request.id, ok: true, result });
         return;
@@ -352,6 +356,13 @@ export class AetraWalletConnect {
 function assertNotExpired(validUntil?: number): void {
   if (validUntil !== undefined && Date.now() > validUntil) {
     throw new AetraConnectError("EXPIRED", "transaction request expired before approval");
+  }
+}
+
+/** Rejects a request whose declared signer isn't this session's account (a confused/hostile dApp). */
+function assertFromMatches(from: string | undefined, account: ConnectedAccount): void {
+  if (from !== undefined && from !== account.address && from !== account.addressRaw) {
+    throw new AetraConnectError("ACCOUNT_MISMATCH", `request signer ${from} is not this session's account`);
   }
 }
 

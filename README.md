@@ -200,9 +200,31 @@ off-chain signature, and the disconnect.
 - The **Aetra Proof** authenticates the account to the dApp and is bound to the
   session keys, defeating relay-level key substitution.
 - **Replay** is prevented by the per-connection challenge and a freshness window.
-- Requests carry a `validUntil`; the wallet refuses stale ones.
+- Requests carry a `validUntil`; the wallet refuses stale ones, and rejects a
+  request whose `from` isn't the session's account (`ACCOUNT_MISMATCH`).
+- Pass `requiredChainId` to `AetraConnect` to refuse a wallet on the wrong
+  network at pairing time (`CHAIN_MISMATCH`).
+- Pairing URIs are size- and shape-validated (client id must be a 32-byte hex
+  key) before anything is decrypted, so a malformed/oversized QR is rejected early.
 - The dApp **holds no key** and cannot sign — every transaction is user-approved
   in the wallet.
+
+## Errors
+
+Every failure is an `AetraConnectError` with a stable `.code`; the same code
+crosses the wire, so `err.code === "USER_REJECTED"` works on both sides. Branch
+with `AetraConnectError.is(err, "USER_REJECTED")`.
+
+| Code | Meaning |
+| --- | --- |
+| `USER_REJECTED` | User declined the connection or transaction. |
+| `TIMEOUT` | No wallet response within the deadline. |
+| `EXPIRED` | Pairing/transaction request passed its `validUntil`. |
+| `BAD_PROOF` | Aetra Proof / signed message failed verification. |
+| `CHAIN_MISMATCH` / `ACCOUNT_MISMATCH` | Wrong network / wrong account for the session. |
+| `MALFORMED` / `UNSUPPORTED_VERSION` | Bad URI/message, or a protocol version the peer doesn't speak. |
+| `DECRYPT_FAILED` | Tampered or misrouted envelope (authentication failed). |
+| `TX_FAILED` / `BRIDGE_ERROR` / `NO_SESSION` | Wallet couldn't broadcast / transport fault / not connected. |
 
 ## Develop
 

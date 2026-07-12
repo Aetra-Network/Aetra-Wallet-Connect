@@ -21,6 +21,12 @@ import type { AppMetadata, ConnectRequest, RequestedItem } from "../types.js";
 export const DEFAULT_UNIVERSAL_BASE = "https://wallet.aetra.network/connect";
 
 const QUERY_KEY = "r";
+/** Hard cap on the encoded payload — a QR realistically holds a few KB; anything larger is junk/attack. */
+const MAX_ENCODED_LENGTH = 8192;
+/** X25519 public keys are 32 bytes → 64 lowercase hex chars. */
+const CLIENT_ID_HEX_LENGTH = 64;
+const MAX_ITEMS = 8;
+const MAX_CHALLENGE_LENGTH = 512;
 
 export interface ConnectUriForms {
   /** `aetra://connect?r=…` — opens an installed wallet via its scheme handler. */
@@ -44,6 +50,9 @@ export class ConnectUri {
   /** Decodes either URI form (or a bare `r` value) back into a validated `ConnectRequest`. */
   static decode(uri: string): ConnectRequest {
     const encoded = extractR(uri);
+    if (encoded.length > MAX_ENCODED_LENGTH) {
+      throw new AetraConnectError("MALFORMED", "connect URI payload is too large");
+    }
     let json: unknown;
     try {
       json = JSON.parse(Bytes.utf8Decode(Bytes.fromBase64Url(encoded)));
@@ -84,13 +93,13 @@ export function validateConnectRequest(value: unknown): ConnectRequest {
   if (typeof value !== "object" || value === null) return bad("not an object");
   const r = value as Record<string, unknown>;
 
-  if (typeof r.v !== "number") bad("missing version");
-  if (typeof r.clientId !== "string" || r.clientId.length === 0) bad("missing clientId");
+  if (typeof r.v !== "number" || !Number.isInteger(r.v)) bad("missing version");
+  if (typeof r.clientId !== "string" || !isClientId(r.clientId)) bad("missing or malformed clientId");
   // `bridge` may be empty for an in-process / embedded transport where both
   // sides already share the bridge; the transport layer enforces reachability.
   if (typeof r.bridge !== "string") bad("missing bridge");
   if (!isAppMetadata(r.app)) bad("missing or malformed app metadata");
-  if (!Array.isArray(r.items) || !r.items.every(isRequestedItem)) bad("malformed items");
+  if (!Array.isArray(r.items) || r.items.length > MAX_ITEMS || !r.items.every(isRequestedItem)) bad("malformed items");
 
   return {
     v: r.v as number,
@@ -112,6 +121,11 @@ function isRequestedItem(value: unknown): value is RequestedItem {
   if (typeof value !== "object" || value === null) return false;
   const i = value as Record<string, unknown>;
   if (i.name === "aetra_address") return true;
-  if (i.name === "aetra_proof") return typeof i.payload === "string";
+  if (i.name === "aetra_proof") return typeof i.payload === "string" && i.payload.length > 0 && i.payload.length <= MAX_CHALLENGE_LENGTH;
   return false;
+}
+
+/** A well-formed session client id: exactly 64 lowercase hex chars (a 32-byte X25519 key). */
+function isClientId(value: string): boolean {
+  return value.length === CLIENT_ID_HEX_LENGTH && /^[0-9a-f]+$/.test(value);
 }

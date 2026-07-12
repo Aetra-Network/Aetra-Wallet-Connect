@@ -131,6 +131,75 @@ describe("end-to-end handshake over MemoryBridge", () => {
     expect(disconnected).toHaveBeenCalled();
   });
 
+  it("reconnecting while connected replaces the session without leaking", async () => {
+    const bridge = new MemoryBridge();
+    const { wc } = makeWallet(bridge);
+    const dapp = new AetraConnect({ app: APP, bridge });
+    const disconnects: Array<{ reason?: string }> = [];
+    dapp.on("disconnect", (e) => disconnects.push(e));
+
+    const hs1 = dapp.connect();
+    await wc.approve(wc.readRequest(hs1.deepLink));
+    const first = await hs1.approval();
+
+    // Pair again while already connected — the old session is torn down cleanly.
+    const hs2 = dapp.connect();
+    await wc.approve(wc.readRequest(hs2.deepLink));
+    const second = await hs2.approval();
+
+    expect(dapp.connected).toBe(true);
+    expect(second.address).toBe(first.address); // same wallet account
+    expect(disconnects.some((d) => /replaced/.test(d.reason ?? ""))).toBe(true);
+
+    // The new session works.
+    const res = await dapp.sendTransaction({ messages: [{ kind: "activate" }] });
+    expect(res.accepted).toBe(true);
+  });
+
+  it("rejects a wallet on the wrong chain when requiredChainId is set", async () => {
+    const bridge = new MemoryBridge();
+    const { wc } = makeWallet(bridge); // wallet reports chainId "aetra-localnet-1"
+    const dapp = new AetraConnect({ app: APP, bridge, requiredChainId: "aetra-mainnet-1" });
+
+    const hs = dapp.connect();
+    await wc.approve(wc.readRequest(hs.deepLink));
+    await expect(hs.approval()).rejects.toMatchObject({ code: "CHAIN_MISMATCH" });
+    expect(dapp.connected).toBe(false);
+  });
+
+  it("refuses sendTransaction with no messages", async () => {
+    const bridge = new MemoryBridge();
+    const { wc } = makeWallet(bridge);
+    const dapp = new AetraConnect({ app: APP, bridge });
+    const hs = dapp.connect();
+    await wc.approve(wc.readRequest(hs.deepLink));
+    await hs.approval();
+    await expect(dapp.sendTransaction({ messages: [] })).rejects.toMatchObject({ code: "MALFORMED" });
+  });
+
+  it("rejects a malformed transaction result from a misbehaving wallet", async () => {
+    const bridge = new MemoryBridge();
+    // Wallet handler returns junk instead of { hash, accepted }.
+    const { wc } = makeWallet(bridge, vi.fn(async () => ({}) as any));
+    const dapp = new AetraConnect({ app: APP, bridge });
+    const hs = dapp.connect();
+    await wc.approve(wc.readRequest(hs.deepLink));
+    await hs.approval();
+    await expect(dapp.sendTransaction({ messages: [{ kind: "activate" }] })).rejects.toMatchObject({ code: "TX_FAILED" });
+  });
+
+  it("a duplicate approve does not leave orphaned wallet sessions", async () => {
+    const bridge = new MemoryBridge();
+    const { wc } = makeWallet(bridge);
+    const dapp = new AetraConnect({ app: APP, bridge });
+    const hs = dapp.connect();
+    const request = wc.readRequest(hs.deepLink);
+    await wc.approve(request);
+    await wc.approve(request); // same topic — must not leak a second session
+    await hs.approval();
+    expect(wc.activeSessions).toHaveLength(1);
+  });
+
   it("restores a persisted dApp session and keeps transacting", async () => {
     const bridge = new MemoryBridge();
     const walletStore = new MemorySessionStore();

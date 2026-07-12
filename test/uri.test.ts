@@ -50,4 +50,28 @@ describe("ConnectUri", () => {
     const encoded = Bytes.toBase64Url(Bytes.utf8Encode(JSON.stringify({ v: 1, clientId: "x" })));
     expect(() => ConnectUri.decode(`aetra://connect?r=${encoded}`)).toThrow(/invalid connect request/);
   });
+
+  const encodeReq = (patch: Record<string, unknown>) =>
+    `aetra://connect?r=${Bytes.toBase64Url(Bytes.utf8Encode(JSON.stringify({ ...request, ...patch })))}`;
+
+  it("rejects a clientId that is not 64 lowercase hex", () => {
+    expect(() => ConnectUri.decode(encodeReq({ clientId: "XYZ" }))).toThrow(/clientId/);
+    expect(() => ConnectUri.decode(encodeReq({ clientId: "AB".repeat(32) }))).toThrow(/clientId/); // uppercase
+    expect(() => ConnectUri.decode(encodeReq({ clientId: "ab".repeat(31) }))).toThrow(/clientId/); // too short
+  });
+
+  it("rejects an over-large payload", () => {
+    const huge = "a".repeat(9000);
+    expect(() => ConnectUri.decode(`aetra://connect?r=${huge}`)).toThrow(/too large/);
+  });
+
+  it("rejects too many requested items", () => {
+    const items = Array.from({ length: 9 }, () => ({ name: "aetra_address" }));
+    expect(() => ConnectUri.decode(encodeReq({ items }))).toThrow(/items/);
+  });
+
+  it("rejects an empty or over-long proof challenge", () => {
+    expect(() => ConnectUri.decode(encodeReq({ items: [{ name: "aetra_proof", payload: "" }] }))).toThrow(/items/);
+    expect(() => ConnectUri.decode(encodeReq({ items: [{ name: "aetra_proof", payload: "x".repeat(600) }] }))).toThrow(/items/);
+  });
 });

@@ -6,7 +6,7 @@ import { SessionKeyPair, SessionCipher, randomId, randomChallenge } from "../cry
 import { AetraProof, verifySignedMessage } from "../proof/index.js";
 import { ConnectUri, type ConnectUriForms } from "../uri/index.js";
 import { Session, MemorySessionStore, type SessionStore } from "../session/index.js";
-import { HttpBridge, type Bridge } from "../bridge/index.js";
+import { HttpBridge, type Bridge, type BridgeSubscription } from "../bridge/index.js";
 import type {
   AppMetadata,
   BridgeEnvelope,
@@ -46,6 +46,8 @@ export interface AetraConnectOptions {
   autoDisconnectMs?: number;
   /** Max accepted Aetra Proof age (seconds). Default 300. */
   proofMaxAgeSeconds?: number;
+  /** If set, reject a wallet whose reported `chainId` differs — guards against wrong-network pairing. */
+  requiredChainId?: string;
 }
 
 export interface ConnectHandshake {
@@ -74,6 +76,8 @@ interface PendingHandshake {
   settled: boolean;
   resolve: (account: ConnectedAccount) => void;
   reject: (err: AetraConnectError) => void;
+  /** This handshake's OWN bridge listener — promoted to the session's on success, closed on failure. */
+  subscription: BridgeSubscription | null;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -93,7 +97,7 @@ interface PendingRequest {
  * ```ts
  * const connect = new AetraConnect({ app, bridge: "https://bridge.aetra.network" });
  * await connect.restore();                       // resume a prior session, if any
- * const hs = connect.connect({ proof: true });
+ * const hs = connect.connect();
  * renderQr(hs.universalLink);
  * const account = await hs.approval();
  * const { hash } = await connect.sendTransaction({
@@ -110,12 +114,14 @@ export class AetraConnect {
   private readonly sessionTtlMs: number;
   private readonly autoDisconnectMs: number;
   private readonly proofMaxAgeSeconds: number;
+  private readonly requiredChainId?: string;
 
   private readonly emitter = new Emitter<DappEventMap>();
   private readonly pendingRequests = new Map<string, PendingRequest>();
 
   private session: Session | null = null;
-  private subscription: { close(): void } | null = null;
+  /** The live session's bridge listener (distinct from any in-flight handshake's). */
+  private sessionSub: BridgeSubscription | null = null;
   private handshake: PendingHandshake | null = null;
   private lifetimeTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -129,6 +135,7 @@ export class AetraConnect {
     this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
     this.autoDisconnectMs = options.autoDisconnectMs ?? DEFAULT_AUTO_DISCONNECT_MS;
     this.proofMaxAgeSeconds = options.proofMaxAgeSeconds ?? DEFAULT_PROOF_MAX_AGE_SECONDS;
+    this.requiredChainId = options.requiredChainId;
   }
 
   // --- Public state ----------------------------------------------------
@@ -159,7 +166,9 @@ export class AetraConnect {
    * Begins a pairing. Returns the URI forms immediately (render the QR now) and
    * an `approval()` promise that settles when the wallet responds. `proof`
    * defaults to true — the wallet must return a verifiable Aetra Proof or the
-   * approval rejects with `BAD_PROOF`.
+   * approval rejects with `BAD_PROOF`. Starting a new pairing while one is
+   * already in flight supersedes it; completing one while already connected
+   * replaces the current session (the old one is torn down cleanly).
    */
   connect(opts: { proof?: boolean; requestValidityMs?: number } = {}): ConnectHandshake {
     this.cancelHandshake();
@@ -186,6 +195,9 @@ export class AetraConnect {
       resolveApproval = resolve;
       rejectApproval = reject;
     });
+    // The promise may settle before anyone awaits it; swallow the "unhandled
+    // rejection" noise for the un-awaited case (cancel/timeout with no approval()).
+    approvalPromise.catch(() => {});
 
     const pending: PendingHandshake = {
       keypair,
@@ -194,28 +206,28 @@ export class AetraConnect {
       settled: false,
       resolve: resolveApproval,
       reject: rejectApproval,
+      subscription: null,
       timer: null,
     };
     this.handshake = pending;
 
-    // Listen for the wallet's reply on our own client id.
-    this.subscription = this.bridge.subscribe(keypair.clientId, {
+    // Each handshake listens on its own client id, with its own subscription.
+    pending.subscription = this.bridge.subscribe(keypair.clientId, {
       onMessage: (env) => this.onInbound(env),
       onError: () => {
         /* transient bridge blips are non-fatal; SSE auto-reconnects */
       },
     });
+    // Arm a default timeout even if approval() is never called, so an abandoned
+    // handshake still cleans up its subscription.
+    this.armHandshakeTimeout(pending, DEFAULT_CONNECT_TIMEOUT_MS);
 
     return {
       deepLink: forms.deepLink,
       universalLink: forms.universalLink,
       request,
       approval: (a = {}) => {
-        if (!pending.settled && pending.timer === null) {
-          pending.timer = setTimeout(() => {
-            this.failHandshake(pending, new AetraConnectError("TIMEOUT", "wallet did not respond in time"));
-          }, a.timeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS);
-        }
+        if (a.timeoutMs !== undefined) this.armHandshakeTimeout(pending, a.timeoutMs);
         return approvalPromise;
       },
       cancel: () => this.failHandshake(pending, new AetraConnectError("USER_REJECTED", "pairing cancelled")),
@@ -233,6 +245,9 @@ export class AetraConnect {
     timeoutMs?: number;
   }): Promise<SendTransactionResult> {
     const session = this.requireSession();
+    if (!Array.isArray(params.messages) || params.messages.length === 0) {
+      throw new AetraConnectError("MALFORMED", "sendTransaction requires at least one message");
+    }
     const request: RpcRequest = {
       type: "request",
       id: randomId(),
@@ -245,7 +260,8 @@ export class AetraConnect {
         ...(params.network !== undefined ? { network: params.network } : {}),
       },
     };
-    return this.sendRpc<SendTransactionResult>(session, request, params.timeoutMs);
+    const result = await this.sendRpc<unknown>(session, request, params.timeoutMs);
+    return assertSendResult(result);
   }
 
   /**
@@ -261,7 +277,7 @@ export class AetraConnect {
       method: "aetra_signMessage",
       params: { message },
     };
-    const result = await this.sendRpc<SignMessageResult>(session, request, opts.timeoutMs);
+    const result = assertSignResult(await this.sendRpc<unknown>(session, request, opts.timeoutMs));
     const proven = verifySignedMessage(result, message);
     if (proven.toUserFriendly() !== session.account.address) {
       throw new AetraConnectError("BAD_PROOF", "signed message came back from a different account");
@@ -287,17 +303,18 @@ export class AetraConnect {
   /**
    * Reattaches to the most recent stored session (if any, unexpired), resubscribes,
    * and returns its account. Emits `connect` so a reactive UI updates. Returns null
-   * when there's nothing to restore.
+   * when there's nothing to restore. A no-op if already connected.
    */
   async restore(): Promise<ConnectedAccount | null> {
     if (this.session) return this.session.account;
+    this.cancelHandshake(); // don't leave an in-flight pairing dangling
     const records = (await this.storage.list()).filter((r) => r.role === "dapp" && r.expiresAt > Date.now());
     if (records.length === 0) return null;
     const latest = records.sort((a, b) => b.createdAt - a.createdAt)[0]!;
 
     const session = Session.fromRecord(latest);
     this.session = session;
-    this.subscription = this.bridge.subscribe(session.selfClientId, {
+    this.sessionSub = this.bridge.subscribe(session.selfClientId, {
       onMessage: (env) => this.onInbound(env),
       onError: () => {},
     });
@@ -321,8 +338,19 @@ export class AetraConnect {
         this.pendingRequests.delete(id);
         reject(new AetraConnectError("TIMEOUT", "wallet did not answer the request in time"));
       }, timeoutMs);
+      (timer as { unref?: () => void }).unref?.();
       this.pendingRequests.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
-      this.bridge.send(session.seal(request)).catch((err) => {
+
+      let envelope: BridgeEnvelope;
+      try {
+        envelope = session.seal(request);
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingRequests.delete(id);
+        reject(err instanceof AetraConnectError ? err : new AetraConnectError("INTERNAL", "failed to encode request"));
+        return;
+      }
+      this.bridge.send(envelope).catch((err) => {
         const p = this.pendingRequests.get(id);
         if (!p) return;
         clearTimeout(p.timer);
@@ -389,6 +417,16 @@ export class AetraConnect {
       }
     }
 
+    if (this.requiredChainId && account.chainId !== this.requiredChainId) {
+      throw new AetraConnectError(
+        "CHAIN_MISMATCH",
+        `wallet is on chain "${account.chainId ?? "unknown"}", this dApp requires "${this.requiredChainId}"`,
+      );
+    }
+
+    // Replacing a live session: tear the old one down cleanly first.
+    if (this.session) this.teardown("replaced by a new connection");
+
     const now = Date.now();
     const expiresAt = Math.min(payload.expiresAt || now + this.sessionTtlMs, now + this.sessionTtlMs);
     const session = new Session({
@@ -407,8 +445,11 @@ export class AetraConnect {
     this.session = session;
     pending.settled = true;
     if (pending.timer) clearTimeout(pending.timer);
+    // Promote the handshake's listener to the session's; don't let failHandshake close it.
+    this.sessionSub = pending.subscription;
+    pending.subscription = null;
     this.handshake = null;
-    // Keep the subscription — it already listens on our client id, now the session's.
+
     void Promise.resolve(this.storage.set(session.topic, session.toRecord())).catch(() => {});
     this.startLifetimeTimer();
 
@@ -451,16 +492,23 @@ export class AetraConnect {
     else pending.reject(AetraConnectError.fromWire(response.error));
   }
 
+  private armHandshakeTimeout(pending: PendingHandshake, ms: number): void {
+    if (pending.settled) return;
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      this.failHandshake(pending, new AetraConnectError("TIMEOUT", "wallet did not respond in time"));
+    }, ms);
+    (pending.timer as { unref?: () => void }).unref?.();
+  }
+
   private failHandshake(pending: PendingHandshake, err: AetraConnectError): void {
     if (pending.settled) return;
     pending.settled = true;
     if (pending.timer) clearTimeout(pending.timer);
-    if (this.handshake === pending) {
-      this.handshake = null;
-      // No session was formed — drop the listener we opened for this attempt.
-      this.subscription?.close();
-      this.subscription = null;
-    }
+    // Close this handshake's OWN subscription (never a promoted session sub).
+    pending.subscription?.close();
+    pending.subscription = null;
+    if (this.handshake === pending) this.handshake = null;
     pending.reject(err);
   }
 
@@ -482,11 +530,12 @@ export class AetraConnect {
     (this.lifetimeTimer as { unref?: () => void }).unref?.();
   }
 
+  /** Tears down the live session (not any in-flight handshake) and its listener. */
   private async teardown(reason: string): Promise<void> {
     const session = this.session;
     this.session = null;
-    this.subscription?.close();
-    this.subscription = null;
+    this.sessionSub?.close();
+    this.sessionSub = null;
     if (this.lifetimeTimer) {
       clearInterval(this.lifetimeTimer);
       this.lifetimeTimer = null;
@@ -509,4 +558,21 @@ function resolveBridge(bridge: Bridge | string, bridgeUrl?: string): { bridge: B
   }
   const url = bridgeUrl ?? (bridge as { baseUrl?: string }).baseUrl ?? "";
   return { bridge, url };
+}
+
+/** Defensively validates the wallet's transaction reply shape (a hostile/buggy wallet could send anything). */
+function assertSendResult(value: unknown): SendTransactionResult {
+  const v = value as Record<string, unknown> | null;
+  if (!v || typeof v.hash !== "string" || typeof v.accepted !== "boolean") {
+    throw new AetraConnectError("TX_FAILED", "wallet returned a malformed transaction result");
+  }
+  return { hash: v.hash, accepted: v.accepted };
+}
+
+function assertSignResult(value: unknown): SignMessageResult {
+  const v = value as Record<string, unknown> | null;
+  if (!v || typeof v.signatureHex !== "string" || typeof v.pubkeyHex !== "string" || typeof v.address !== "string") {
+    throw new AetraConnectError("BAD_PROOF", "wallet returned a malformed signature result");
+  }
+  return { signatureHex: v.signatureHex, pubkeyHex: v.pubkeyHex, address: v.address };
 }
