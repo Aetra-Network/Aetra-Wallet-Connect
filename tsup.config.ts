@@ -23,5 +23,5 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   // Runtime deps stay external — declared in package.json, resolved by the consumer.
-  external: ["@aetra/sdk", "@noble/ciphers", "@noble/curves", "@noble/hashes", "@scure/base"],
+  external: ["@aetra/sdk", "@noble/ciphers", "@noble/curves", "@noble/hashes"],
 });

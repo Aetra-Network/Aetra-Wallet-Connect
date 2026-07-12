@@ -21,8 +21,8 @@ export type { AetraConnectErrorCode } from "./errors.js";
 export type * from "./types.js";
 
 // App manifest (TON-Connect style identity)
-export { loadManifest, validateManifest, manifestToApp, normaliseOrigin } from "./manifest.js";
-export type { AetraConnectManifest } from "./manifest.js";
+export { loadManifest, validateManifest, manifestToApp, normaliseOrigin, isSecureUrl } from "./manifest.js";
+export type { AetraConnectManifest, SecureUrlOptions } from "./manifest.js";
 
 // dApp + wallet connectors
 export { AetraConnect } from "./dapp/index.js";

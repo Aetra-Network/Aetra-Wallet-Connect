@@ -65,4 +65,38 @@ describe("SessionKeyPair + SessionCipher", () => {
     const same = SessionKeyPair.fromSecretHex(kp.secretHex);
     expect(same.clientId).toBe(kp.clientId);
   });
+
+  it("rejects an oversized envelope with MALFORMED before attempting to decode it", () => {
+    const kp = SessionKeyPair.generate();
+    const cipher = new SessionCipher(kp.sharedSecret(kp.publicKey), "ctx");
+    // Not valid base64-of-a-real-envelope either — proves the size check runs
+    // first, since a base64/AEAD failure would surface as DECRYPT_FAILED instead.
+    const huge = "a".repeat(256 * 1024 + 1);
+    expect(() => cipher.open(huge)).toThrowError(AetraConnectError);
+    try {
+      cipher.open(huge);
+    } catch (err) {
+      expect((err as AetraConnectError).code).toBe("MALFORMED");
+    }
+  });
+
+  it("still accepts a legitimate large payload (e.g. a contract.deploy at the compiler's default max bytecode size)", () => {
+    const alice = SessionKeyPair.generate();
+    const bob = SessionKeyPair.generate();
+    const ctx = SessionCipher.contextFor(alice.clientId, bob.clientId);
+    const aliceCipher = new SessionCipher(alice.sharedSecret(Bytes.fromHex(bob.clientId)), ctx);
+    const bobCipher = new SessionCipher(bob.sharedSecret(Bytes.fromHex(alice.clientId)), ctx);
+
+    // aetravm/compiler.DefaultMaxCodeBytes = 64 KiB of raw module bytecode.
+    const bytecodeBase64 = Bytes.toBase64(new Uint8Array(64 * 1024).fill(7));
+    const message = {
+      type: "request",
+      id: "1",
+      method: "aetra_sendTransaction",
+      params: { messages: [{ kind: "contract.deploy", bytecodeBase64, salt: "s" }] },
+    };
+    const sealed = aliceCipher.sealJson(message);
+    expect(sealed.length).toBeLessThan(256 * 1024); // comfortably under the cap
+    expect(bobCipher.openJson(sealed)).toEqual(message);
+  });
 });

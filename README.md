@@ -12,7 +12,7 @@ signer that the chain, the Dalen wallet, and the Tarsen framework already share.
 > Status: **0.1.0 — foundation.** Manifest-based app identity (TON-Connect
 > style), full pairing → proof → transaction → disconnect flow, session
 > persistence, idle auto-disconnect, a reference relay, and React bindings
-> ([`@aetra/connect-react`](../aetra-connect-react)). 50 tests, including an
+> ([`@aetra/connect-react`](../aetra-connect-react)). 70 tests, including an
 > end-to-end handshake over the in-memory bridge.
 
 ## Why
@@ -266,7 +266,7 @@ with `AetraConnectError.is(err, "USER_REJECTED")`.
 
 ```bash
 npm install
-npm test         # vitest — crypto, proof, uri, session, e2e handshake (34 tests)
+npm test         # vitest — crypto, proof, uri, session, storage, manifest/bridge security, SSE, e2e handshake (70 tests)
 npm run typecheck
 npm run build    # tsup → dist/ (ESM + .d.ts), one bundle per subpath
 ```

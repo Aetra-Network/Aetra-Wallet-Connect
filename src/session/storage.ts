@@ -1,4 +1,4 @@
-import type { SessionRecord } from "./session.js";
+import { Session, type SessionRecord } from "./session.js";
 
 /** A value that may be returned synchronously or as a promise. */
 export type MaybePromise<T> = T | Promise<T>;
@@ -57,11 +57,20 @@ export class BrowserSessionStore implements SessionStore {
     if (!this.storage) return this.fallback.get(topic);
     const raw = this.storage.getItem(this.key(topic));
     if (!raw) return null;
+    let parsed: unknown;
     try {
-      return JSON.parse(raw) as SessionRecord;
+      parsed = JSON.parse(raw);
     } catch {
+      parsed = undefined;
+    }
+    if (!Session.isRecord(parsed)) {
+      // Corrupted (bad JSON) or old-schema entry — fail clean at the store
+      // boundary instead of throwing later inside Session.fromRecord, and
+      // clear it so it doesn't linger in the index forever.
+      this.delete(topic);
       return null;
     }
+    return parsed;
   }
 
   set(topic: string, record: SessionRecord): void {

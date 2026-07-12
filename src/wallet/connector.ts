@@ -6,7 +6,7 @@ import { PROTOCOL_VERSION, DEFAULT_BRIDGE_URL } from "../version.js";
 import { SessionKeyPair, SessionCipher } from "../crypto/index.js";
 import { AetraProof, signMessage as builtinSignMessage, type ProofSigner } from "../proof/index.js";
 import { ConnectUri } from "../uri/index.js";
-import { loadManifest, manifestToApp } from "../manifest.js";
+import { loadManifest, manifestToApp, isSecureUrl } from "../manifest.js";
 import { Session, MemorySessionStore, type SessionStore } from "../session/index.js";
 import { HttpBridge, type Bridge } from "../bridge/index.js";
 import type {
@@ -57,6 +57,13 @@ export interface AetraWalletConnectOptions {
   chainId?: string;
   /** Session persistence. Defaults to in-memory. */
   storage?: SessionStore;
+  /**
+   * Allow a plain `http://` manifest/bridge URL outside localhost — an
+   * explicit escape hatch, off by default. A scanned QR/deep-link is
+   * untrusted input; `resolveApp`/pairing refuse a non-loopback http target
+   * unless this is set. See `isSecureUrl` in `../manifest.js`.
+   */
+  allowInsecureConnections?: boolean;
   /** REQUIRED: builds/signs/broadcasts an approved transaction. Throw `userRejected()` to decline. */
   onTransaction: TransactionHandler;
   /** Optional: gate off-chain message signing behind wallet UI. Without it, requests auto-sign. */
@@ -94,6 +101,7 @@ export class AetraWalletConnect {
   private readonly walletMeta?: WalletMetadata;
   private readonly chainId?: string;
   private readonly storage: SessionStore;
+  private readonly allowInsecureConnections: boolean;
   private readonly onTransaction: TransactionHandler;
   private readonly onSignMessage?: SignMessageHandler;
   private readonly sessionTtlMs: number;
@@ -122,6 +130,7 @@ export class AetraWalletConnect {
     this.walletMeta = options.wallet;
     this.chainId = options.chainId;
     this.storage = options.storage ?? new MemorySessionStore();
+    this.allowInsecureConnections = options.allowInsecureConnections ?? false;
     this.onTransaction = options.onTransaction;
     this.onSignMessage = options.onSignMessage;
     this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
@@ -182,7 +191,8 @@ export class AetraWalletConnect {
    */
   async resolveApp(request: ConnectRequest): Promise<AppMetadata> {
     if (request.manifestUrl) {
-      return manifestToApp(await loadManifest(request.manifestUrl, this.fetchImpl));
+      const opts = { allowInsecureConnections: this.allowInsecureConnections };
+      return manifestToApp(await loadManifest(request.manifestUrl, this.fetchImpl, opts));
     }
     return request.app;
   }
@@ -316,6 +326,9 @@ export class AetraWalletConnect {
     const normalized = normalizeBridgeUrl(url);
     if (!normalized || !/^https?:\/\//i.test(normalized)) return this.defaultBridge;
     if (this.defaultBridgeUrl && normalized === this.defaultBridgeUrl) return this.defaultBridge;
+    if (!isSecureUrl(normalized, { allowInsecureConnections: this.allowInsecureConnections })) {
+      throw new AetraConnectError("MALFORMED", `refusing to use an insecure bridge: ${normalized}`);
+    }
     let bridge = this.bridgeCache.get(normalized);
     if (!bridge) {
       bridge = new HttpBridge({ baseUrl: normalized, ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });

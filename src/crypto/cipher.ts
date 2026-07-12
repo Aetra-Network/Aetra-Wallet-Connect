@@ -9,6 +9,16 @@ const KEY_INFO = "aetra-connect/v1/session-key";
 const HKDF_SALT = "aetra-connect/v1";
 const NONCE_LENGTH = 24; // XChaCha20 nonce
 const KEY_LENGTH = 32;
+/**
+ * Hard cap on an incoming envelope's base64 length, checked before any decode
+ * work. Session traffic is signing/tx-confirmation requests — even a
+ * `contract.deploy` at the AVM compiler's default max module size (64 KiB;
+ * see `aetravm/compiler.DefaultMaxCodeBytes`) comes in around ~115 KiB once
+ * base64-encoded into the request JSON and sealed into an envelope, so 256
+ * KiB leaves more than 2x headroom for that while still rejecting a
+ * multi-MB flood (empirically ~690ms for 50 MB) before any base64/AEAD work.
+ */
+const MAX_ENVELOPE_LENGTH = 256 * 1024;
 
 /**
  * `SessionCipher` — authenticated encryption for one session channel. The raw
@@ -42,8 +52,11 @@ export class SessionCipher {
     return Bytes.toBase64(Bytes.concat([nonce, ciphertext]));
   }
 
-  /** Opens a base64 envelope → plaintext bytes. Throws `DECRYPT_FAILED` on any tamper/mismatch. */
+  /** Opens a base64 envelope → plaintext bytes. Throws `DECRYPT_FAILED` on any tamper/mismatch, or `MALFORMED` if it exceeds the size cap. */
   open(envelopeBase64: string): Uint8Array {
+    if (envelopeBase64.length > MAX_ENVELOPE_LENGTH) {
+      throw new AetraConnectError("MALFORMED", `envelope exceeds the maximum size of ${MAX_ENVELOPE_LENGTH} bytes`);
+    }
     let raw: Uint8Array;
     try {
       raw = Bytes.fromBase64(envelopeBase64);

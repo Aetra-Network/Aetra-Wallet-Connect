@@ -39,18 +39,55 @@ export function normaliseOrigin(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+export interface SecureUrlOptions {
+  /**
+   * Allow a plain `http://` target outside localhost — an explicit escape
+   * hatch for a trusted non-TLS deployment (e.g. an internal relay). Off by
+   * default: a malicious QR/deep-link can point `manifestUrl`/`bridge` at an
+   * attacker-chosen host, and over plain HTTP a network MITM can rewrite the
+   * response and control values (like the Proof `domain`) that are meant to
+   * be attacker-proof.
+   */
+  allowInsecureConnections?: boolean;
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/** True for an https URL, an http URL to localhost/127.0.0.1/::1 (local dev, e.g. `examples/relay.mjs`), or any http URL when `allowInsecureConnections` is set. */
+export function isSecureUrl(value: string, opts: SecureUrlOptions = {}): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  if (parsed.protocol !== "http:") return false;
+  return opts.allowInsecureConnections === true || LOOPBACK_HOSTS.has(parsed.hostname.toLowerCase());
+}
+
 /**
  * Fetches and validates a manifest from `url`. Rejects with a typed
  * `AetraConnectError("MALFORMED", …)` on a network failure or a bad shape —
  * a wallet should refuse to pair with an app whose manifest isn't reachable.
+ * Refuses a plain-http `url` (see `isSecureUrl`) and does not follow
+ * redirects, so an attacker-chosen `manifestUrl` can't be MITM'd or bounced
+ * to a different host before its contents are trusted.
  */
-export async function loadManifest(url: string, fetchImpl: typeof fetch = globalThis.fetch): Promise<AetraConnectManifest> {
+export async function loadManifest(
+  url: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  opts: SecureUrlOptions = {},
+): Promise<AetraConnectManifest> {
   if (typeof fetchImpl !== "function") {
     throw new AetraConnectError("INTERNAL", "loadManifest: no global fetch; pass a fetch implementation");
   }
+  if (!isSecureUrl(url, opts)) {
+    throw new AetraConnectError("MALFORMED", `refusing to fetch manifest over an insecure connection: ${url}`);
+  }
   let res: Response;
   try {
-    res = await fetchImpl(url, { cache: "no-store" });
+    res = await fetchImpl(url, { cache: "no-store", redirect: "error" });
   } catch (err) {
     throw new AetraConnectError("MALFORMED", `could not fetch manifest at ${url}`, err instanceof Error ? err.message : String(err));
   }
@@ -73,9 +110,9 @@ export function validateManifest(value: unknown): AetraConnectManifest {
   };
   if (typeof value !== "object" || value === null) return bad("not an object");
   const m = value as Record<string, unknown>;
-  if (typeof m.url !== "string" || !isHttpUrl(m.url)) bad("missing or non-http `url`");
+  if (typeof m.url !== "string" || !isSecureUrl(m.url)) bad("missing or insecure `url`");
   if (typeof m.name !== "string" || m.name.length === 0) bad("missing `name`");
-  if (typeof m.iconUrl !== "string" || !isHttpUrl(m.iconUrl)) bad("missing or non-http `iconUrl`");
+  if (typeof m.iconUrl !== "string" || !isSecureUrl(m.iconUrl)) bad("missing or insecure `iconUrl`");
   if (m.termsOfUseUrl !== undefined && typeof m.termsOfUseUrl !== "string") bad("malformed `termsOfUseUrl`");
   if (m.privacyPolicyUrl !== undefined && typeof m.privacyPolicyUrl !== "string") bad("malformed `privacyPolicyUrl`");
 
@@ -86,8 +123,4 @@ export function validateManifest(value: unknown): AetraConnectManifest {
     ...(typeof m.termsOfUseUrl === "string" ? { termsOfUseUrl: m.termsOfUseUrl } : {}),
     ...(typeof m.privacyPolicyUrl === "string" ? { privacyPolicyUrl: m.privacyPolicyUrl } : {}),
   };
-}
-
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\/.+/i.test(value);
 }

@@ -128,6 +128,27 @@ export class Session {
     };
   }
 
+  /**
+   * Structural validation of a `SessionRecord` read back from an external
+   * store (e.g. `localStorage`) — a corrupted or old-schema entry should fail
+   * cleanly at the store boundary, not throw deeper inside `fromRecord`.
+   */
+  static isRecord(value: unknown): value is SessionRecord {
+    if (typeof value !== "object" || value === null) return false;
+    const r = value as Record<string, unknown>;
+    if (r.role !== "dapp" && r.role !== "wallet") return false;
+    if (typeof r.topic !== "string" || typeof r.selfSecretHex !== "string" || typeof r.peerClientId !== "string") return false;
+    if (typeof r.bridge !== "string") return false;
+    if (typeof r.createdAt !== "number" || typeof r.expiresAt !== "number" || typeof r.lastActivityAt !== "number") return false;
+    if (typeof r.account !== "object" || r.account === null) return false;
+    const account = r.account as Record<string, unknown>;
+    if (typeof account.address !== "string" || typeof account.addressRaw !== "string" || typeof account.pubkeyHex !== "string") return false;
+    if (typeof r.app !== "object" || r.app === null) return false;
+    const app = r.app as Record<string, unknown>;
+    if (typeof app.name !== "string" || typeof app.url !== "string") return false;
+    return true;
+  }
+
   static fromRecord(record: SessionRecord): Session {
     return new Session({
       topic: record.topic,

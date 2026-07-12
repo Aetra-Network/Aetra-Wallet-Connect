@@ -12,6 +12,15 @@
  */
 
 const RECONNECT_DELAY_MS = 3_000;
+/**
+ * Hard cap on the SSE frame-assembly buffer. One legitimate frame is one
+ * `BridgeEnvelope` JSON — bounded by `SessionCipher`'s own ~256 KiB envelope
+ * cap plus a little `from`/`to`/JSON overhead — so 512 KiB is roughly 2x that
+ * and never rejects real traffic, while still bounding a hostile/compromised
+ * relay that never sends the terminating blank line from growing this buffer
+ * without limit.
+ */
+const MAX_BUFFER_LENGTH = 512 * 1024;
 
 type MessageLike = { data: string };
 
@@ -67,6 +76,12 @@ export class FetchEventSource {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
+        if (buffer.length > MAX_BUFFER_LENGTH) {
+          this.controller?.abort();
+          this.onerror?.(new Error("SSE frame buffer exceeded the maximum size — dropping the connection"));
+          this.scheduleReconnect();
+          return;
+        }
         // SSE frames are separated by a blank line.
         let frameEnd;
         while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
