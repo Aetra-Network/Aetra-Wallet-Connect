@@ -1,0 +1,80 @@
+{
+  "name": "@aetra/connect",
+  "version": "0.1.0",
+  "description": "Aetra Wallet Connect — an end-to-end-encrypted protocol for connecting a dApp to an Aetra wallet: QR/deep-link pairing, Aetra Proof of address ownership, and user-approved transaction requests. Runs in the browser and in Node.",
+  "keywords": [
+    "aetra",
+    "aetralis",
+    "wallet",
+    "wallet-connect",
+    "dapp",
+    "web3",
+    "qr"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./dapp": {
+      "types": "./dist/dapp.d.ts",
+      "import": "./dist/dapp.js"
+    },
+    "./wallet": {
+      "types": "./dist/wallet.d.ts",
+      "import": "./dist/wallet.js"
+    },
+    "./proof": {
+      "types": "./dist/proof.d.ts",
+      "import": "./dist/proof.js"
+    },
+    "./session": {
+      "types": "./dist/session.d.ts",
+      "import": "./dist/session.js"
+    },
+    "./bridge": {
+      "types": "./dist/bridge.d.ts",
+      "import": "./dist/bridge.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "import": "./dist/crypto.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "relay": "node examples/relay.mjs"
+  },
+  "dependencies": {
+    "@aetra/sdk": "file:../sdk",
+    "@noble/ciphers": "^1.3.0",
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^1.6.1",
+    "@scure/base": "^1.2.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
