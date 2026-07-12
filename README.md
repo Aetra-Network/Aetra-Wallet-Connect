@@ -39,6 +39,13 @@ Narrow primitives are exported on their own subpaths too: `@aetra/connect/proof`
 (Aetra Proof), `@aetra/connect/crypto` (session keys + cipher),
 `@aetra/connect/session` (state + storage), `@aetra/connect/bridge` (transports).
 
+## Server-side (bots, backends)
+
+The dApp side runs headless in Node (>=18) with zero setup — the bridge falls
+back to a built-in fetch-streaming SSE client when there's no browser
+`EventSource`. Generate a pairing QR from a **Telegram bot**, await approval,
+request transactions: see [`examples/telegram-bot.md`](examples/telegram-bot.md).
+
 ## Using React / Next.js?
 
 Reach for **[`@aetra/connect-react`](../aetra-connect-react)** — a

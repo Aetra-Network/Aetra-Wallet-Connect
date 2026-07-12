@@ -6,3 +6,4 @@ export type { Bridge, BridgeHandlers, BridgeSubscription } from "./bridge.js";
 export { HttpBridge } from "./httpBridge.js";
 export type { HttpBridgeOptions } from "./httpBridge.js";
 export { MemoryBridge } from "./memoryBridge.js";
+export { FetchEventSource } from "./fetchEventSource.js";

@@ -1,6 +1,7 @@
 import { AetraConnectError } from "../errors.js";
 import type { BridgeEnvelope } from "../types.js";
 import type { Bridge, BridgeHandlers, BridgeSubscription } from "./bridge.js";
+import { FetchEventSource } from "./fetchEventSource.js";
 
 /**
  * `HttpBridge` — the real relay transport. Envelopes are POSTed to `send` and
@@ -56,15 +57,14 @@ export class HttpBridge implements Bridge {
   }
 
   subscribe(clientId: string, handlers: BridgeHandlers): BridgeSubscription {
-    const EventSourceImpl = this.eventSourceOption ?? (globalThis as { EventSource?: typeof EventSource }).EventSource;
-    if (typeof EventSourceImpl !== "function") {
-      throw new AetraConnectError("BRIDGE_ERROR", "HttpBridge: no global EventSource; pass options.eventSource");
-    }
     const url = `${this.baseUrl}/events?client=${encodeURIComponent(clientId)}`;
-    const source = new EventSourceImpl(url);
+    // Prefer an explicit implementation, then the browser global, then the
+    // built-in fetch-streaming client — so Node/servers work with no setup.
+    const EventSourceImpl = this.eventSourceOption ?? (globalThis as { EventSource?: typeof EventSource }).EventSource;
+    const source = typeof EventSourceImpl === "function" ? new EventSourceImpl(url) : new FetchEventSource(url, this.fetchImpl);
 
     source.onopen = () => handlers.onOpen?.();
-    source.onmessage = (event: MessageEvent) => {
+    source.onmessage = (event: { data: unknown }) => {
       let envelope: BridgeEnvelope;
       try {
         envelope = JSON.parse(String(event.data)) as BridgeEnvelope;

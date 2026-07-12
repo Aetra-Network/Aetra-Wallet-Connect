@@ -7,6 +7,12 @@ All notable changes to `@aetra/connect` are documented here.
 Initial foundation release.
 
 ### Added
+- **Server-side out of the box**: `HttpBridge` falls back to a built-in
+  fetch-streaming SSE client (`FetchEventSource`, auto-reconnect) when there is
+  no global `EventSource` — Node bots/backends need zero setup. Telegram bot
+  example in `examples/telegram-bot.md`.
+- **`contract.deploy` transaction intent** (store bytecode + deploy instance in
+  one approval) alongside send/activate/stake/execute/raw.
 - **App manifest** (TON-Connect style): a dApp declares itself with a hosted
   `aetra-connect-manifest.json` and configures a `manifestUrl`; both sides fetch
   and validate it, and the proof binds to the manifest's `url`. The bridge is now

@@ -145,6 +145,19 @@ export type ConnectTxMessage =
       fundsNaet?: string;
       gasLimit?: number;
     }
+  /** Store `bytecode` and deploy a contract instance from it (MsgStoreCode + MsgDeployContract in one tx). */
+  | {
+      kind: "contract.deploy";
+      /** The compiled AVM module bytes (`module.bin`), base64. */
+      bytecodeBase64: string;
+      salt: string;
+      /** Initial storage fields, `[{ name, type, value }]`. Defaults to empty. */
+      initFields?: ContractFieldSpec[];
+      initialBalanceNaet?: string;
+      /** Defaults to the deploying account. */
+      admin?: string;
+      gasLimit?: number;
+    }
   /** Escape hatch: a pre-encoded Cosmos message the wallet passes straight through. */
   | { kind: "raw"; typeUrl: string; valueBase64: string };
 
