@@ -1,5 +1,5 @@
 /**
- * @aetra/connect — the Aetra Wallet Connect protocol.
+ * @aetra-network/connect — the Aetra Wallet Connect protocol.
  *
  * An end-to-end-encrypted bridge between a dApp and an Aetra wallet: QR /
  * deep-link pairing, an Aetra Proof of address ownership at connect time, and
@@ -7,8 +7,8 @@
  * persistence and idle auto-disconnect. Runs in the browser and in Node.
  *
  * Two entry points do the work:
- *   - `@aetra/connect/dapp`   → `AetraConnect`      (the website's client)
- *   - `@aetra/connect/wallet` → `AetraWalletConnect` (the wallet's responder)
+ *   - `@aetra-network/connect/dapp`   → `AetraConnect`      (the website's client)
+ *   - `@aetra-network/connect/wallet` → `AetraWalletConnect` (the wallet's responder)
  *
  * The primitives underneath are exported here and on narrow subpaths
  * (`/proof`, `/crypto`, `/session`, `/bridge`) for advanced use and testing.

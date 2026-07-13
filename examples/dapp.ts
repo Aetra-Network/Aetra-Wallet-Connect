@@ -1,13 +1,13 @@
 /**
  * Illustrative dApp integration (browser).
  *
- * A website imports `@aetra/connect/dapp`, shows a "Connect wallet" button that
+ * A website imports `@aetra-network/connect/dapp`, shows a "Connect wallet" button that
  * opens a modal with a QR code, and once connected requests transactions. Pair
  * this with any QR renderer (e.g. `qrcode` / `qrcode.react`).
  *
  * This file is documentation, not run by the test suite.
  */
-import { AetraConnect, AetraConnectError, BrowserSessionStore } from "@aetra/connect";
+import { AetraConnect, AetraConnectError, BrowserSessionStore } from "@aetra-network/connect";
 
 const connect = new AetraConnect({
   app: {
@@ -73,7 +73,7 @@ export async function onLogin() {
   const nonce = crypto.randomUUID();
   const signed = await connect.signMessage(`Sign in to Aetra Swap: ${nonce}`);
   // Send { signed, nonce } to your backend, which re-verifies with
-  // `verifySignedMessage` from `@aetra/connect/proof`.
+  // `verifySignedMessage` from `@aetra-network/connect/proof`.
   return signed;
 }
 

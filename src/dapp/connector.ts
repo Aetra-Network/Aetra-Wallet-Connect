@@ -1,4 +1,4 @@
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { Emitter } from "../emitter.js";
 import { AetraConnectError } from "../errors.js";
 import { PROTOCOL_VERSION, DEFAULT_BRIDGE_URL } from "../version.js";

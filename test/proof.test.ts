@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Wallet } from "@aetra/sdk/wallet";
+import { Wallet } from "@aetra-network/sdk/wallet";
 import { AetraProof, signMessage, verifySignedMessage } from "../src/proof/index.js";
 import { AetraConnectError } from "../src/errors.js";
 

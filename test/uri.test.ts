@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { ConnectUri } from "../src/uri/index.js";
 import { AetraConnectError } from "../src/errors.js";
 import { PROTOCOL_VERSION } from "../src/version.js";

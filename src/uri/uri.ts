@@ -1,4 +1,4 @@
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { AetraConnectError } from "../errors.js";
 import { CONNECT_URI_SCHEME } from "../version.js";
 import type { AppMetadata, ConnectRequest, RequestedItem } from "../types.js";

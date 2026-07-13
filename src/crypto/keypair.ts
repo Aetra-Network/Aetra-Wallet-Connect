@@ -1,5 +1,5 @@
 import { x25519 } from "@noble/curves/ed25519.js";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 
 /**
  * `SessionKeyPair` — an ephemeral X25519 keypair, one per session per side. Its

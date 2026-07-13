@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Wallet } from "@aetra/sdk/wallet";
+import { Wallet } from "@aetra-network/sdk/wallet";
 import { AetraConnect } from "../src/dapp/index.js";
 import { AetraWalletConnect, userRejected } from "../src/wallet/index.js";
 import { MemoryBridge } from "../src/bridge/index.js";

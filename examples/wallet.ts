@@ -1,15 +1,15 @@
 /**
  * Illustrative wallet integration (the Dalen wallet side).
  *
- * The wallet imports `@aetra/connect/wallet`, wires an `AetraWalletConnect` to
+ * The wallet imports `@aetra-network/connect/wallet`, wires an `AetraWalletConnect` to
  * its unlocked account, and implements `onTransaction` as the seam where it
  * shows its confirm dialog and reuses its existing build → sign → broadcast
- * pipeline. Here that pipeline is `@aetra/kit`'s `WalletClient` — it executes
+ * pipeline. Here that pipeline is `@aetra-network/kit`'s `WalletClient` — it executes
  * the exact same `ConnectTxMessage[]` vocabulary this protocol carries as one
  * signed tx, so an approved request forwards straight through with no
- * re-encoding by hand (see `@aetra/kit`'s `compileIntents` for that mapping).
- * `@aetra/kit` isn't a dependency of this package; a real wallet integration
- * installs it alongside `@aetra/connect`: `npm install @aetra/kit`.
+ * re-encoding by hand (see `@aetra-network/kit`'s `compileIntents` for that mapping).
+ * `@aetra-network/kit` isn't a dependency of this package; a real wallet integration
+ * installs it alongside `@aetra-network/connect`: `npm install @aetra-network/kit`.
  *
  * This file is documentation, not run by the test suite.
  */
@@ -18,13 +18,13 @@ import {
   userRejected,
   type TransactionHandler,
   type WalletSigner,
-} from "@aetra/connect/wallet";
-import { BrowserSessionStore, type ConnectTxMessage } from "@aetra/connect";
-import { Amount, Wallet } from "@aetra/sdk";
-import { WalletClient, createWalletClient } from "@aetra/kit";
+} from "@aetra-network/connect/wallet";
+import { BrowserSessionStore, type ConnectTxMessage } from "@aetra-network/connect";
+import { Amount, Wallet } from "@aetra-network/sdk";
+import { WalletClient, createWalletClient } from "@aetra-network/kit";
 
 /**
- * Builds the transaction handler. `walletClient` is a `@aetra/kit`
+ * Builds the transaction handler. `walletClient` is a `@aetra-network/kit`
  * `WalletClient` over the unlocked account; `confirm` is the wallet's own
  * approval dialog (returns true if the user approves).
  */
@@ -73,7 +73,7 @@ export async function startWalletConnect(account: Wallet, confirm: (s: string) =
 
   const wc = new AetraWalletConnect({
     bridge: "https://bridge.aetra.network",
-    signer: account as WalletSigner, // an @aetra/sdk Wallet satisfies WalletSigner
+    signer: account as WalletSigner, // an @aetra-network/sdk Wallet satisfies WalletSigner
     wallet: { name: "Dalen Wallet", url: "https://wallet.aetra.network" },
     chainId: "aetra-localnet-1",
     storage: new BrowserSessionStore("aetra-connect:dalen"),

@@ -1,5 +1,5 @@
-import { Address } from "@aetra/sdk/address";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Address } from "@aetra-network/sdk/address";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { Emitter } from "../emitter.js";
 import { AetraConnectError, userRejected } from "../errors.js";
 import { PROTOCOL_VERSION, DEFAULT_BRIDGE_URL } from "../version.js";
@@ -27,7 +27,7 @@ const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_AUTO_DISCONNECT_MS = 30 * 60 * 1000;
 const LIFETIME_CHECK_INTERVAL_MS = 15_000;
 
-/** The wallet's account signer — a subset of the SDK `Signer` (an `@aetra/sdk` `Wallet` satisfies it). */
+/** The wallet's account signer — a subset of the SDK `Signer` (an `@aetra-network/sdk` `Wallet` satisfies it). */
 export type WalletSigner = ProofSigner;
 
 /** Handles a decrypted transaction request: show UI, build/sign/broadcast, return the hash. */

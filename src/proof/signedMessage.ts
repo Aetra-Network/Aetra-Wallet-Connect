@@ -1,6 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { Address } from "@aetra/sdk/address";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Address } from "@aetra-network/sdk/address";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { AetraConnectError } from "../errors.js";
 import type { ProofSigner } from "./proof.js";
 import type { SignMessageResult } from "../types.js";

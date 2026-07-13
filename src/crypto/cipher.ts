@@ -1,7 +1,7 @@
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { AetraConnectError } from "../errors.js";
 import { randomBytesOf } from "./random.js";
 

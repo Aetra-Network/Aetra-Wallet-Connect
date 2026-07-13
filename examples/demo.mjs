@@ -10,7 +10,7 @@
  * → disconnect.
  */
 import { AetraConnect, AetraWalletConnect, MemoryBridge, MemorySessionStore } from "../dist/index.js";
-import { Wallet } from "@aetra/sdk/wallet";
+import { Wallet } from "@aetra-network/sdk/wallet";
 
 const line = (s) => console.log(s);
 
@@ -23,7 +23,7 @@ async function main() {
 
   const wallet = new AetraWalletConnect({
     bridge,
-    signer: account, // an @aetra/sdk Wallet satisfies WalletSigner directly
+    signer: account, // an @aetra-network/sdk Wallet satisfies WalletSigner directly
     wallet: { name: "Dalen Wallet" },
     chainId: "aetra-localnet-1",
     storage: new MemorySessionStore(),

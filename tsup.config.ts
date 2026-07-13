@@ -2,8 +2,8 @@ import { defineConfig } from "tsup";
 
 /**
  * Each entry is a subpath export (see package.json "exports"). A dApp that only
- * shows a connect button pulls `@aetra/connect/dapp`; a wallet integration pulls
- * `@aetra/connect/wallet`. Splitting the bundles keeps the dApp path from
+ * shows a connect button pulls `@aetra-network/connect/dapp`; a wallet integration pulls
+ * `@aetra-network/connect/wallet`. Splitting the bundles keeps the dApp path from
  * dragging in wallet-only code (and vice versa), and lets the light primitives
  * (`/proof`, `/crypto`) be imported on their own.
  */
@@ -23,5 +23,5 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   // Runtime deps stay external — declared in package.json, resolved by the consumer.
-  external: ["@aetra/sdk", "@noble/ciphers", "@noble/curves", "@noble/hashes"],
+  external: ["@aetra-network/sdk", "@noble/ciphers", "@noble/curves", "@noble/hashes"],
 });

@@ -1,4 +1,4 @@
-# @aetra/connect
+# @aetra-network/connect
 
 **Aetra Wallet Connect** — an end-to-end-encrypted protocol for connecting a
 dApp to an Aetra wallet. A website shows a modal with a QR code (or a deep link
@@ -6,38 +6,38 @@ to the wallet); the user approves in their wallet; the dApp gets a proven
 account and can request transactions that the wallet confirms and broadcasts.
 
 Object-oriented, dependency-light TypeScript. Runs unchanged in the browser and
-in Node (>=18). Built on [`@aetra/sdk`](../sdk) — the same address codec and
+in Node (>=18). Built on [`@aetra-network/sdk`](../sdk) — the same address codec and
 signer that the chain, the Dalen wallet, and the Tarsen framework already share.
 
 > Status: **0.1.0 — foundation.** Manifest-based app identity (TON-Connect
 > style), full pairing → proof → transaction → disconnect flow, session
 > persistence, idle auto-disconnect, a reference relay, and React bindings
-> ([`@aetra/connect-react`](../aetra-connect-react)). 70 tests, including an
+> ([`@aetra-network/connect-react`](../aetra-connect-react)). 70 tests, including an
 > end-to-end handshake over the in-memory bridge.
 
 ## Why
 
-`@aetra/sdk`'s `Signer` is the seam "who authorises a transaction". A local
-`Wallet` implements it today. `@aetra/connect` is the **remote** signer: the
+`@aetra-network/sdk`'s `Signer` is the seam "who authorises a transaction". A local
+`Wallet` implements it today. `@aetra-network/connect` is the **remote** signer: the
 key stays in the user's wallet, the dApp holds only a session, and every
 transaction is user-approved. Nothing signs on the dApp side.
 
 ## Install
 
 ```bash
-npm install @aetra/connect
+npm install @aetra-network/connect
 ```
 
 ## The two sides
 
 | Import | Class | Who uses it |
 | --- | --- | --- |
-| `@aetra/connect/dapp` | `AetraConnect` | The website — pair, then request transactions & signatures. |
-| `@aetra/connect/wallet` | `AetraWalletConnect` | The wallet — read a URI, approve/reject, serve requests. |
+| `@aetra-network/connect/dapp` | `AetraConnect` | The website — pair, then request transactions & signatures. |
+| `@aetra-network/connect/wallet` | `AetraWalletConnect` | The wallet — read a URI, approve/reject, serve requests. |
 
-Narrow primitives are exported on their own subpaths too: `@aetra/connect/proof`
-(Aetra Proof), `@aetra/connect/crypto` (session keys + cipher),
-`@aetra/connect/session` (state + storage), `@aetra/connect/bridge` (transports).
+Narrow primitives are exported on their own subpaths too: `@aetra-network/connect/proof`
+(Aetra Proof), `@aetra-network/connect/crypto` (session keys + cipher),
+`@aetra-network/connect/session` (state + storage), `@aetra-network/connect/bridge` (transports).
 
 ## Server-side (bots, backends)
 
@@ -48,7 +48,7 @@ request transactions: see [`examples/telegram-bot.md`](examples/telegram-bot.md)
 
 ## Using React / Next.js?
 
-Reach for **[`@aetra/connect-react`](../aetra-connect-react)** — a
+Reach for **[`@aetra-network/connect-react`](../aetra-connect-react)** — a
 manifest-configured `<AetraConnectProvider>`, a drop-in `<AetraConnectButton>`, a
 QR pairing modal, and hooks (`useAetraWallet`, `useAetraAddress`,
 `useAetraConnect`). It's the `@tonconnect/ui-react` analogue and wraps this core.
@@ -74,7 +74,7 @@ PNG/ICO (not SVG). See [`examples/aetra-connect-manifest.json`](examples/aetra-c
 ## dApp quick start
 
 ```ts
-import { AetraConnect, BrowserSessionStore } from "@aetra/connect/dapp";
+import { AetraConnect, BrowserSessionStore } from "@aetra-network/connect/dapp";
 
 const connect = new AetraConnect({
   // Manifest-first (recommended). The bridge defaults to the network relay.
@@ -109,11 +109,11 @@ state changes for a reactive UI.
 ## Wallet quick start
 
 ```ts
-import { AetraWalletConnect, userRejected } from "@aetra/connect/wallet";
+import { AetraWalletConnect, userRejected } from "@aetra-network/connect/wallet";
 
 const wc = new AetraWalletConnect({
   bridge: "https://bridge.aetra.network",
-  signer: unlockedWallet,                  // an @aetra/sdk Wallet — or any { pubkeyHex, sign }
+  signer: unlockedWallet,                  // an @aetra-network/sdk Wallet — or any { pubkeyHex, sign }
   wallet: { name: "Dalen Wallet" },
   chainId: "aetra-localnet-1",
   onTransaction: async (params, { account }) => {
@@ -134,7 +134,7 @@ await wc.approve(request);                   // or: await wc.reject(request, "no
 
 `onTransaction` is the whole integration point: it receives the decrypted intent
 list, shows the wallet's confirm UI, and returns the broadcast hash. See
-[`examples/wallet.ts`](examples/wallet.ts) for wiring it to the `@aetra/sdk`
+[`examples/wallet.ts`](examples/wallet.ts) for wiring it to the `@aetra-network/sdk`
 `Aetra` facade.
 
 ## How the handshake works
@@ -171,7 +171,7 @@ own session key. The domain separator (first byte `0x61`) can never prefix a
 Cosmos `SignDoc` (`0x0a`), so a proof signature is never a valid transaction
 signature and vice-versa. The dApp verifies the signature, that the address
 derives from the public key, that the challenge/origin/keys match, and that the
-timestamp is fresh. Verification lives in `@aetra/connect/proof` (`AetraProof`).
+timestamp is fresh. Verification lives in `@aetra-network/connect/proof` (`AetraProof`).
 
 `signMessage` / `verifySignedMessage` provide the same guarantee for arbitrary
 off-chain messages (its own `"aetra-signed-message-v1"` domain).

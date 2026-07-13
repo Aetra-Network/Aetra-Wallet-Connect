@@ -1,5 +1,5 @@
 import { randomBytes } from "@noble/hashes/utils";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 
 /**
  * CSPRNG helpers. `randomBytes` from @noble/hashes wraps

@@ -1,6 +1,6 @@
 # Server-side usage: a Telegram bot
 
-`@aetra/connect` runs headless in Node (>=18) with **zero extra setup** — the
+`@aetra-network/connect` runs headless in Node (>=18) with **zero extra setup** — the
 `HttpBridge` falls back to a built-in fetch-streaming SSE client when there is
 no browser `EventSource`. That makes the "dApp side" of the protocol usable
 from a bot, a backend, or a CLI: generate a pairing QR, wait for the user's
@@ -10,14 +10,14 @@ The example below is a complete Telegram bot (using [grammY](https://grammy.dev)
 and the `qrcode` package for PNG generation):
 
 ```bash
-npm install @aetra/connect @aetra/sdk grammy qrcode
+npm install @aetra-network/connect @aetra-network/sdk grammy qrcode
 ```
 
 ```js
 // bot.mjs
 import { Bot, InputFile } from "grammy";
 import QRCode from "qrcode";
-import { AetraConnect, AetraConnectError, MemorySessionStore } from "@aetra/connect";
+import { AetraConnect, AetraConnectError, MemorySessionStore } from "@aetra-network/connect";
 
 const BRIDGE = process.env.AETRA_BRIDGE ?? "https://bridge.aetra.network";
 const bot = new Bot(process.env.BOT_TOKEN);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { SessionKeyPair, SessionCipher } from "../src/crypto/index.js";
 import { AetraConnectError } from "../src/errors.js";
 

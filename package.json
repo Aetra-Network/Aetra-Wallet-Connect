@@ -1,5 +1,5 @@
 {
-  "name": "@aetra/connect",
+  "name": "@aetra-network/connect",
   "version": "0.1.0",
   "description": "Aetra Wallet Connect — an end-to-end-encrypted protocol for connecting a dApp to an Aetra wallet: QR/deep-link pairing, Aetra Proof of address ownership, and user-approved transaction requests. Runs in the browser and in Node.",
   "keywords": [
@@ -77,10 +77,10 @@
     "@noble/hashes": "^1.6.1"
   },
   "peerDependencies": {
-    "@aetra/sdk": ">=0.1.0 <1"
+    "@aetra-network/sdk": ">=0.1.0 <1"
   },
   "devDependencies": {
-    "@aetra/sdk": "file:../sdk",
+    "@aetra-network/sdk": "file:../sdk",
     "tsup": "^8.3.5",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
@@ -89,6 +89,7 @@
     "node": ">=18"
   },
   "publishConfig": {
-    "access": "public"
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

@@ -1,4 +1,4 @@
-import { Bytes } from "@aetra/sdk/bytes";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { SessionKeyPair, SessionCipher } from "../crypto/index.js";
 import { AetraConnectError } from "../errors.js";
 import type { BridgeEnvelope, ConnectedAccount, AppMetadata, RpcMessage } from "../types.js";

@@ -1,6 +1,6 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { Address } from "@aetra/sdk/address";
-import { Bytes } from "@aetra/sdk/bytes";
+import { Address } from "@aetra-network/sdk/address";
+import { Bytes } from "@aetra-network/sdk/bytes";
 import { AetraConnectError } from "../errors.js";
 import type { AetraProofData } from "../types.js";
 
@@ -35,7 +35,7 @@ export interface ProofSigner {
   readonly pubkeyHex: string;
   /**
    * secp256k1 over sha256(message), low-S, 64-byte compact. Identical semantics
-   * to the SDK `Signer.sign` — an `@aetra/sdk` `Wallet` satisfies this directly.
+   * to the SDK `Signer.sign` — an `@aetra-network/sdk` `Wallet` satisfies this directly.
    * Callers must NOT pre-hash; `sign` hashes internally.
    */
   sign(message: Uint8Array): Uint8Array;

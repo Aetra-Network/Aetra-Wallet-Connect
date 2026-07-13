@@ -1,0 +1,45 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # GITHUB_TOKEN is minted automatically per-run by GitHub Actions — no
+    # manual secret/token setup required. It authenticates both installing
+    # from and publishing to the @aetra-network scope on GitHub Packages.
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: "@aetra-network"
+          always-auth: true
+
+      # devDependencies.@aetra-network/sdk is a `file:../sdk` link used for
+      # local dev against the sibling checkout in ecosystem/. This repo is
+      # checked out standalone in CI (no sibling `../sdk`), so `npm ci` would
+      # leave a dangling symlink and every later step would fail to resolve
+      # the import. Point it at the same registry range already declared in
+      # peerDependencies so it installs the published package from GitHub
+      # Packages instead — this requires @aetra-network/sdk to have been
+      # published at least once already (see sdk's own publish workflow,
+      # which has no such dependency and can always publish first).
+      - run: npm pkg set "devDependencies.@aetra-network/sdk=>=0.1.0 <1"
+      - run: npm install
+
+      - run: npm run check
+
+      - run: npm publish
