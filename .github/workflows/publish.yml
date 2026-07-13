@@ -38,6 +38,7 @@ jobs:
       # published at least once already (see sdk's own publish workflow,
       # which has no such dependency and can always publish first).
       - run: npm pkg set "devDependencies.@aetra-network/sdk=>=0.1.0 <1"
+      - run: rm -f package-lock.json
       - run: npm install
 
       - run: npm run check
